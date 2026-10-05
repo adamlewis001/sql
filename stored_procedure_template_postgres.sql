@@ -49,3 +49,35 @@ $$;
 
 --Call the prodecure:
 CALL transfer_funds(101, 102, 500.00, 0.00);
+
+/* 
+Advanced Example with Transaction Control
+Because PostgreSQL procedures support transactions, you can bundle multiple operations together and manually commit them, or roll them back if an error occurs.
+Scenario: Processing a batch of order payments. If a specific order is invalid, skip it without losing the work done on the valid orders.
+*/
+CREATE OR REPLACE PROCEDURE process_batch_orders()
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    r RECORD;
+BEGIN
+    -- Loop through a temporary queue of pending orders
+    FOR r IN SELECT order_id, total_amount FROM pending_orders LOOP
+        BEGIN
+            -- 1. Deduct inventory, update status, etc.
+            UPDATE orders SET status = 'Processed' WHERE order_id = r.order_id;
+            
+            -- 2. Commit this specific order permanently to the DB
+            COMMIT; 
+            
+        EXCEPTION WHEN OTHERS THEN
+            -- If this single order fails, undo ONLY this order's changes
+            RAISE NOTICE 'Failed to process order ID % due to an error.', r.order_id;
+            ROLLBACK; 
+        END;
+    END LOOP;
+END;
+$$;
+
+-- Calling the procedure:
+CALL process_batch_orders();
